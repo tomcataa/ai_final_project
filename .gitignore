@@ -1,0 +1,4 @@
+*.py~
+prewin_dist.log
+*.pyc
+test.py
