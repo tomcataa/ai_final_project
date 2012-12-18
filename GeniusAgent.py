@@ -215,45 +215,64 @@ class Agent:
 
 	def way_to_prewin(self, one):
 		"""
-		[triple, pair, neighbor, single]
+		kind = [triple, pair, neighbor, single]
+		useful: how many cards can we get one more triple
+		score: a metric to evaluate how good
+			triple = 3, pair/consecutive neighbor = 2, non-consecutive = 1, single = 0
 		"""
 		kind = [0, 0, 0, 0] 
-		useful = set()
+		useful = []
+		score = 0
 		for part in one.split("\t"):
 			#print "part: {0}".format(part)
 			tmp = part.split()
 			length = len(tmp)
-			if (length == 3):
+			if (length == 3):		# triple
 				kind[0] += 1
-			elif (length == 1):
+				score += 3
+			elif (length == 1):		# single
 				kind[3] += 1
-			elif (tmp[0] == tmp[1]): # pair
+			elif (tmp[0] == tmp[1]):# pair
 				kind[1] += 1
-				useful.add("{0}".format(tmp[0]))
+				useful.append("{0}".format(tmp[0]))
+				score += 2
 			else:
 				kind[2] += 1
 				n = GameBoard.NextCard(tmp[0])
-				if (n == tmp[1]): # consecutive neighbor
-					p = GameBoard.PrevCard(tmp[0])
-					if (p != None): useful.add(p)
-					nn = GameBoard.NextCard(tmp[1])
-					if (nn != None): useful.add(nn)
+				p = GameBoard.PrevCard(tmp[0])
+				nn = GameBoard.NextCard(tmp[1])
+				if (n == tmp[1]):	# consecutive neighbor
+					score += 2
+					if (p != None): useful.append(p)
+					if (nn != None): useful.append(nn)
 				else:
-					useful.add(n)
+					useful.append(n)
+					score += 1
 
 		#print "kind: {0}".format(kind)
-		#print "useful: {0}".format(" ".join(useful))
+		""" how many cards can we probably get """
+		useful_amount = 0
+		for card in set(useful):
+			ctype = GameBoard.CardType(card)
+			if (ctype == 1): a = self.wang_list.count(card)
+			elif (ctype == 2): a = self.tube_list.count(card)
+			elif (ctype == 3): a = self.bamb_list.count(card)
+			elif (ctype == 4): a = self.word_list.count(card)
+			else: a = self.wind_list.count(card)
+			b = self.gb.drop_list.count(card)
+			useful_amount += (4 - a - b)
+
 		"""
 		1. enumerate, because goal state not too much
 		2. counting pong_list so that we can focus on 16 cards
-		3. chech prewin first	
+		3. check prewin first	
 		"""
 		goals = [[4, 1, 1, 0], [5, 0, 0, 1], [4, 2, 0, 0]]
 		gpattern = [["***", "***", "***", "***", "##", "$$"],["***", "***", "***", "***", "***", "/"],
 					["***", "***", "***", "***", "##", "##"]]
 		result = [0, 0, 0]
 		size = len(self.pong_list) / 3
-		if ((size + kind[0]) > 4): return 0, 0, len(useful)
+		if ((size + kind[0]) > 4): return [0, useful_amount, score]
 		for i in range(size): 
 			gpattern[0].remove("***")
 			gpattern[1].remove("***")
@@ -287,7 +306,7 @@ class Agent:
 			result[number] = step
 		#print "steps to goal: {0}, useful: {1}".format(result, len(useful))
 		
-		return min(result), max(result), len(useful)
+		return [min(result), useful_amount, score]
 
 	def count_steps(self):
 		wang_combination = self.find_all_combination(1, list(self.wang_list), "", [])
@@ -304,75 +323,99 @@ class Agent:
 						for wi in wind_combination:
 							all_combination.append("{0}{1}{2}{3}{4}".format(w, t, b, wo, wi))
 							size += 1
-		#total_mini = 0
-		#total_maxi = 0
-		#total_useful = 0
 		mini = 99
-		maxi = 0
-		useful = 0
+		useful_amount = 0
+		score = 0
 		for i in range(size):
 			one = all_combination[i]
 			#print "one: {0}".format(one)
-			a, b, c = self.way_to_prewin(one.strip())
-			if (a < mini): mini = a
-			if (b > maxi): maxi = b
-			if (c > useful): useful = c
-			#print "min: {0}, max: {1}, useful: {2}".format(a, b, c)
-			#exit(1)
-			#total_mini += a
-			#total_maxi += b
-			#total_useful += c
-		"""
-		average situation
-		"""
-		#print "total: [{0}, {1}, {2}], size: {3}".format(total_mini, total_maxi, total_useful, size)
-		#avg = [(total_mini/size), (total_maxi/size), (total_useful/size)]
-		#return avg
-		return mini, maxi, useful
-			
-	def drop(self):
-		"""
-		try to discard every card to find the best
-		"""
-		result = []
-		all_cards = [self.wang_list, self.tube_list, self.bamb_list, self.word_list, self.wind_list]
-		for cards in all_cards:
-			for i in range(len(cards)):
-				c = cards.pop(i)
-				mm, MM, useful = self.count_steps()
-				cards.insert(i, c)
-				result.append([mm, MM, useful, c])
-				#print "min: {0}, max: {1}, useful: {2}, dcard: {3}".format(mm, MM, useful, c)
-		sort_result = sorted(result, key=lambda r: r[0])
-		# sorting first rule
+			r = self.way_to_prewin(one.strip())
+			if (r[0] < mini): mini = r[0]
+			if (r[1] > useful_amount): useful_amount = r[1]
+			if (r[2] > score): score = r[2]
+
+		return mini, useful_amount, score
+
+	def sorting_by_criteria(self, result):
+		""" sort by steps to prewin (small -> big) """
+		result = sorted(result, key=lambda r: r[0])
 		flag = False
-		m = sort_result[0][0]
-		for i in range(len(sort_result)):
-			if (sort_result[i][0] != m): 
-				flag = True
-				break
-		# sorting second rule
+		m = result[0][0]
+		for i in range(len(result)):
+			if (result[i][0] == m): continue
+			flag = True
+			break
 		if not flag: i += 1
-		sub = sort_result[:i]
-		sort_sub = sorted(sub, key=lambda r: r[1], reverse=True)
+		result = result[:i]
+		""" in prewin status, compare useful_amount only """
+		if (result[0][0] == 0):
+			result = sorted(result, key=lambda r: r[1], reverse=True)
+			#+++++++
+			test = ""
+			for r in result:
+				test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
+			print "prewin status: {0}".format(test)
+			#++++++
+			return result[0][3]
+		#####
+		#test = ""
+		#for r in result:
+		#	test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
+		#print "{0} steps to win: {1}".format(r[0], test)
+		#####
+		""" sort by score (big -> small) """
+		result = sorted(result, key=lambda r: r[2], reverse=True)
 		flag = False
-		m = sort_sub[0][1]
-		for i in range(len(sort_sub)):
-			if (sort_sub[i][1] != m): break
-		# sorting third rule
+		m = result[0][2]
+		for i in range(len(result)):
+			if (result[i][2] == m): continue
+			flag = True
+			break
 		if not flag: i += 1
-		ssub = sort_sub[:i]
-		sort_ssub = sorted(ssub, key=lambda r: r[2], reverse=True)
-		# choose one
-		dcard = sort_ssub[0][3]
-		m = sort_ssub[0][2]
-		for r in sort_ssub:
-			if (r[2] != m): break
+		result = result[:i]
+		#--------------
+		#test = ""
+		#for r in result:
+		#	test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
+		#print "sort by score: {0}".format(test)
+		#--------------
+		""" sort by useful card amount (big -> small) """
+		result = sorted(result, key=lambda r: r[1], reverse=True)
+		#####
+		#test = ""
+		#for r in result:
+		#	test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
+		#print "sort by useful amount: {0}".format(test)
+		#####
+		""" choose one to discard """
+		dcard = result[0][3]
+		m = result[0][1]
+		for r in result:
+			if (r[1] != m): break
 			ctype = GameBoard.CardType(r[3])
 			if (ctype == 4) and (self.word_list.count(r[3]) == 1): dcard = r[3]
 			if (ctype == 5) and (self.wind_list.count(r[3]) == 1): dcard = r[3]
-		print "\tdiscard: {0}".format(dcard)
-		#exit(1)
+		#print "\tdiscard: {0}".format(dcard)
+		return dcard
+
+	def drop(self):
+		""" try to discard every card to find the best """
+		#print "drop_list: {0}".format(" ".join(self.gb.drop_list))
+		result = []
+		all_cards = [self.wang_list, self.tube_list, self.bamb_list, self.word_list, self.wind_list]
+		previous = ""
+		for cards in all_cards:
+			for i in range(len(cards)):
+				""" avoid running same card """
+				if (cards[i] == previous): continue
+				c = cards.pop(i)
+				previous = c
+				mini, useful_amount, score = self.count_steps()
+				cards.insert(i, c)
+				result.append([mini, useful_amount, score, c])
+				#print "min: {0}, useful_amount: {1}, score: {2}, dcard: {3}".format(mini, useful_amount, score, c)
+
+		dcard = self.sorting_by_criteria(result)
 		ctype = GameBoard.CardType(dcard)
 		all_cards[ctype-1].remove(dcard)
 		self.card_count -= 1
