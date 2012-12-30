@@ -65,34 +65,14 @@ class Agent:
 	# 4. 選擇要放棄的牌.
 	def draw(self, keep=False):
 		card = self.gb.drawCard()
-		print "\tdraw: {0}".format(card)
+		print "\tGeniusAgent draw: {0}".format(card)
 		prewin_tiles = GameBoard.PreWinTiles(self)
 		if card in prewin_tiles:
-		#if GameBoard.GoalState(self, card): # Check goal state
 			self.gb.win_agent = self
 			self.win_card = card
 			self.win_by_draw+=1
 			#print("\t[Test] Agent({0}) 自摸 {1}!".format(self.name, card))
 			return       
-		elif len(prewin_tiles) > 0:
-			self.pwin_flag = True
-			for tile in prewin_tiles:
-				ctype = GameBoard.CardType(tile)
-				if ctype == 1:
-					if tile in self.gb.wang_list:
-						return card 
-				elif ctype == 2:
-					if tile in self.gb.tube_list:
-						return card
-				elif ctype == 3:
-					if tile in self.gb.bamb_list:
-						return card
-				elif ctype == 4:
-					if tile in self.gb.word_list:
-						return card
-				elif ctype == 5:
-					if tile in self.gb.wind_list:
-						return card
 		
 		#print("\t[Test] {0} draw {1}...".format(self.name, card))
 		ctype = GameBoard.CardType(card)
@@ -136,13 +116,7 @@ class Agent:
 			self.flow_list.sort()
 			return self.draw()            
 
-		dcard=None     
-		if not keep:
-			dcard = self.drop()
-			#print("\t[Test] {0} drop {1}...".format(self.name, dcard))
-			#self.gb.disCard(self, dcard)
-		if (len(self.word_list)%3+len(self.wind_list)%3+len(self.tube_list)%3+len(self.wang_list)%3+len(self.bamb_list)%3) == 0:
-			self.wrong = True
+		dcard = self.drop()
 		return dcard
 
 	def find_all_combination(self, ctype, cards, comb_str, combination):
@@ -416,10 +390,13 @@ class Agent:
 				#print "min: {0}, useful_amount: {1}, score: {2}, dcard: {3}".format(mini, useful_amount, score, c)
 
 		dcard = self.sorting_by_criteria(result)
+		print "\tGeniusAgent drop: {0}".format(dcard)
 		ctype = GameBoard.CardType(dcard)
 		all_cards[ctype-1].remove(dcard)
 		self.card_count -= 1
 		return dcard
+
+	def pong_or_eat(self, action_flag, ctype, card);
 
 	def _pong(self, c_list, count, card):        
 		for i in range(count+1):
@@ -440,15 +417,11 @@ class Agent:
 		
 	# 碰! A callback by GameBoard. Return drop card or redraw card if you want.    
 	def pong(self, agent, ctype, count, card):
-		if GameBoard.GoalState(self, card): # Check goal state
-			self.gb.win_agent = self
-			self.win_card = card
-			self.win+=1
-			agent.close+=1
-			#print("\t[Test] Agent({0}) 碰胡 {1}!!".format(self.name, card))
-			return
-		#if self._isPrewin():
-	#    return
+		""" (flag stand for pong, card type, card) """
+		dcard = self.pong_or_eat(2, ctype, card)
+		return dcard
+
+		print "\tGeniusAgent pong: {0}".format(card)
 		# Greedy algorithm: Always pong!
 		if ctype==1:
 			return self._pong(self.wang_list, count, card)                
@@ -468,21 +441,17 @@ class Agent:
 			olist.remove(e)
 			self.card_count-=1
 		dcard = self.drop()
-		#print("\t[Test] {0}: Eat '{1}' and drop {2}!".format(self.name, toCListStr(elist), dcard))
-		#self.gb.disCard(self, dcard)
 		return dcard
 
 	# 吃牌. Callback by GameBoard
 	def eat(self, agent, card, ctype, eat_list):
-		if GameBoard.GoalState(self, card): # Check goal state
-			self.gb.win_agent = self
-			self.win_card = card
-			self.win+=1
-			agent.lose+=1
-			#print("\t[Test] Agent({0}) 吃胡 {1}!".format(self.name, card))
-			return
+		""" (flag stand for eat, card type, card) """
+		dcard = self.pong_or_eat(1, ctype, card)
+		return dcard
+
 		if self._isPrewin():
 			return
+		print "\tGeniusAgent eat: {0}".format(card)
 		# Greedy algorithm: Always eat from the first choice
 		if ctype==1:
 			return self._eat(self.wang_list, eat_list[0][0], eat_list[0][1])
