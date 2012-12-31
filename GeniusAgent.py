@@ -21,6 +21,7 @@ class Agent:
 		gb.appendAgent(self)        # 將 Agent 加入 GameBoard
 		self.wrong = False          # Wrong flag
 		self.pwin_flag = False      # Enter pre-win state
+		self.current_best_state = [99, 0, 0]# [mini, useful_amount, score]
 	
 	# Drop all cards in hand
 	def clean(self):
@@ -34,6 +35,7 @@ class Agent:
 		del self.pong_list[:]
 		self.card_count = 0
 		self.pwin_flag = False
+		self.current_best_state = [99, 0, 0]
 
 	def _isPrewin(self):
 		prewin_tiles = GameBoard.PreWinTiles(self)
@@ -65,7 +67,7 @@ class Agent:
 	# 4. 選擇要放棄的牌.
 	def draw(self, keep=False):
 		card = self.gb.drawCard()
-		print "\tGeniusAgent draw: {0}".format(card)
+		#print "\tGeniusAgent draw: {0}".format(card)
 		prewin_tiles = GameBoard.PreWinTiles(self)
 		if card in prewin_tiles:
 			self.gb.win_agent = self
@@ -321,22 +323,17 @@ class Agent:
 			break
 		if not flag: i += 1
 		result = result[:i]
+
 		""" in prewin status, compare useful_amount only """
 		if (result[0][0] == 0):
 			result = sorted(result, key=lambda r: r[1], reverse=True)
-			#+++++++
 			test = ""
 			for r in result:
 				test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
-			print "prewin status: {0}".format(test)
-			#++++++
+#			print "prewin status: {0}".format(test)
+			self.current_best_state = [result[0][0], result[0][1], result[0][2]]
 			return result[0][3]
-		#####
-		#test = ""
-		#for r in result:
-		#	test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
-		#print "{0} steps to win: {1}".format(r[0], test)
-		#####
+
 		""" sort by score (big -> small) """
 		result = sorted(result, key=lambda r: r[2], reverse=True)
 		flag = False
@@ -347,29 +344,24 @@ class Agent:
 			break
 		if not flag: i += 1
 		result = result[:i]
-		#--------------
-		#test = ""
-		#for r in result:
-		#	test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
-		#print "sort by score: {0}".format(test)
-		#--------------
+
 		""" sort by useful card amount (big -> small) """
 		result = sorted(result, key=lambda r: r[1], reverse=True)
-		#####
-		#test = ""
-		#for r in result:
-		#	test += "[{0}, {1}, {2}, {3}], ".format(r[0], r[1], r[2], r[3])
-		#print "sort by useful amount: {0}".format(test)
-		#####
+
 		""" choose one to discard """
 		dcard = result[0][3]
 		m = result[0][1]
+		best = result[0]
 		for r in result:
 			if (r[1] != m): break
 			ctype = GameBoard.CardType(r[3])
-			if (ctype == 4) and (self.word_list.count(r[3]) == 1): dcard = r[3]
-			if (ctype == 5) and (self.wind_list.count(r[3]) == 1): dcard = r[3]
-		#print "\tdiscard: {0}".format(dcard)
+			if (ctype == 4) and (self.word_list.count(r[3]) == 1):
+				dcard = r[3]
+				best = r
+			if (ctype == 5) and (self.wind_list.count(r[3]) == 1):
+				dcard = r[3]
+				best = r
+		self.current_best_state = [r[0], r[1], r[2]]
 		return dcard
 
 	def drop(self):
@@ -390,75 +382,114 @@ class Agent:
 				#print "min: {0}, useful_amount: {1}, score: {2}, dcard: {3}".format(mini, useful_amount, score, c)
 
 		dcard = self.sorting_by_criteria(result)
-		print "\tGeniusAgent drop: {0}".format(dcard)
+		#print "\tGeniusAgent drop: {0}".format(dcard)
 		ctype = GameBoard.CardType(dcard)
 		all_cards[ctype-1].remove(dcard)
 		self.card_count -= 1
 		return dcard
 
-	def pong_or_eat(self, action_flag, ctype, card);
-
-	def _pong(self, c_list, count, card):        
-		for i in range(count+1):
+	# action_flag: 1 => pong
+	# action_flag: 2 => eat
+	def pong_or_eat(self, action_flag, ctype, card):
+		if (ctype == 1): c_list = self.wang_list
+		elif (ctype == 2): c_list = self.tube_list
+		elif (ctype == 3): c_list = self.bamb_list
+		elif (ctype == 4): c_list = self.word_list
+		else: c_list = self.wind_list
+		temp_cards = []
+		if (action_flag == 1):
+			temp_cards.append([card, card])
+		else: # for eat, we have to find all possible eaten cards
+			n = GameBoard.NextCard(card)
+			p = GameBoard.PrevCard(card)
+			if (int(card[0]) == 1):
+				n = GameBoard.NextCard(card)
+				nn = GameBoard.NextCard(n)
+				temp_cards.append([n, nn])
+			elif (int(card[0]) == 2):
+				p = GameBoard.PrevCard(card)
+				n = GameBoard.NextCard(card)
+				nn = GameBoard.NextCard(n)
+				if ((p in c_list) and (n in c_list)): temp_cards.append([p, n])
+				if ((n in c_list) and (nn in c_list)): temp_cards.append([n, nn])
+			elif (int(card[0]) == 8):
+				p = GameBoard.PrevCard(card)
+				n = GameBoard.NextCard(card)
+				pp = GameBoard.PrevCard(p)
+				if ((p in c_list) and (n in c_list)): temp_cards.append([p, n])
+				if ((p in c_list) and (pp in c_list)): temp_cards.append([pp, p])
+			elif (int(card[0]) == 9):
+				p = GameBoard.PrevCard(card)
+				pp = GameBoard.PrevCard(p)
+				if ((p in c_list) and (pp in c_list)): temp_cards.append([pp, p])
+			else:
+				n = GameBoard.NextCard(card)
+				nn = GameBoard.NextCard(n)
+				p = GameBoard.PrevCard(card)
+				pp = GameBoard.PrevCard(p)
+				if ((p in c_list) and (n in c_list)): temp_cards.append([p, n])
+				if ((pp in c_list) and (p in c_list)): temp_cards.append([pp, p])
+				if ((n in c_list) and (nn in c_list)): temp_cards.append([n, nn])
+		mini = 99
+		useful = 0
+		score = 0
+		result = None
+		for one in temp_cards:
+			for c in one:
+				self.pong_list.append(c)
+				c_list.remove(c)
 			self.pong_list.append(card)
-			
-		for i in range(count):
-			c_list.remove(card)
-			self.card_count-=1
-		
-		if count==2:
-			dcard = self.drop()
-			#print("\t[Test] {0}: Pong '{1}' and drop {2}!".format(self.name, card, dcard))
-			#self.gb.disCard(self, dcard)
-			return dcard
-		else:
-			#print("\t[Test] {0}: Gong '{1}'!".format(self.name, card))
-			return self.draw()
-		
+			m, u, s = self.count_steps()
+			for c in one:
+				self.pong_list.remove(c)
+				c_list.append(c)
+			self.pong_list.remove(card)
+			c_list.sort()
+			if (m > mini): continue
+			if (m == mini) and (u < useful): continue
+			if (m == mini) and (u == useful) and (s <= score): continue
+			result = one
+			mini = m
+			useful = u
+			score = s
+		"""
+		noe we know, which cards to eat is better
+		check: should we eat/pong or not
+		return None: do not eat/pong
+		"""
+		if (mini > self.current_best_state[0]): 
+#			print "current_best_state: {0}".format(self.current_best_state)
+#			print "mini: {0}, useful: {1}, score: {2}".format(mini, useful, score)
+			return None
+		if (mini == self.current_best_state[0]) and (useful < self.current_best_state[1]):
+#			print "current_best_state: {0}".format(self.current_best_state)
+#			print "mini: {0}, useful: {1}, score: {2}".format(mini, useful, score)
+			return None
+		for c in result:
+			c_list.remove(c)
+			self.pong_list.append(c)
+			self.card_count -= 1
+		self.pong_list.append(card)
+		self.pong_list.sort()
+		return self.drop()
+
 	# 碰! A callback by GameBoard. Return drop card or redraw card if you want.    
 	def pong(self, agent, ctype, count, card):
+		""" ignore kong """
+		if (count == 3): return None
 		""" (flag stand for pong, card type, card) """
-		dcard = self.pong_or_eat(2, ctype, card)
-		return dcard
-
-		print "\tGeniusAgent pong: {0}".format(card)
-		# Greedy algorithm: Always pong!
-		if ctype==1:
-			return self._pong(self.wang_list, count, card)                
-		elif ctype==2:
-			return self._pong(self.tube_list, count, card)                
-		elif ctype==3:
-			return self._pong(self.bamb_list, count, card)                
-		elif ctype==4:
-			return self._pong(self.word_list, count, card)                
-		elif ctype==5:
-			return self._pong(self.wind_list, count, card)
-				
-
-	def _eat(self, olist, dlist, elist):
-		self.pong_list.extend(elist)
-		for e in dlist:
-			olist.remove(e)
-			self.card_count-=1
-		dcard = self.drop()
+		dcard = self.pong_or_eat(1, ctype, card)
+		#if (dcard): print "\tGeniusAgent pong: {0}".format(card)
+		#else: print "\tGeniusAgent do not pong:{0}".format(card)
 		return dcard
 
 	# 吃牌. Callback by GameBoard
 	def eat(self, agent, card, ctype, eat_list):
 		""" (flag stand for eat, card type, card) """
-		dcard = self.pong_or_eat(1, ctype, card)
+		dcard = self.pong_or_eat(2, ctype, card)
+		#if (dcard): print "\tGeniusAgent eat: {0}".format(card)
+		#else: print "\tGeniusAgent do not eat:{0}".format(card)
 		return dcard
-
-		if self._isPrewin():
-			return
-		print "\tGeniusAgent eat: {0}".format(card)
-		# Greedy algorithm: Always eat from the first choice
-		if ctype==1:
-			return self._eat(self.wang_list, eat_list[0][0], eat_list[0][1])
-		elif ctype==2:
-			return self._eat(self.tube_list, eat_list[0][0], eat_list[0][1])
-		elif ctype==3:
-			return self._eat(self.bamb_list, eat_list[0][0], eat_list[0][1])
 
 	# 將牌放入
 	def _feedCard(self, card):
